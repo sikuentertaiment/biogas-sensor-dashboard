@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulator Data Arduino</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .card {
+            transition: all 0.3s ease;
+            will-change: transform, box-shadow;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+        @keyframes valueUpdate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .value-update {
+            animation: valueUpdate 0.5s ease;
+        }
+        @keyframes cardHighlight {
+            0% { background-color: inherit; }
+            50% { background-color: rgba(16, 185, 129, 0.1); }
+            100% { background-color: inherit; }
+        }
+        .card-highlight {
+            animation: cardHighlight 1s ease;
+        }
+        .status-connected {
+            background-color: #10B981;
+        }
+        .status-disconnected {
+            background-color: #EF4444;
+        }
+        .status-sending {
+            background-color: #F59E0B;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <header class="bg-[#33456f] text-white shadow-md sticky top-0 z-[1]">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center lg:max-w-[70%]">
+                <h1 class="text-2xl font-bold">Simulator Data Arduino</h1>
+                <div class="flex items-center space-x-4">
+                    <div id="firebaseStatus" class="px-3 py-1 rounded-full text-sm status-disconnected">Firebase: Terputus</div>
+                    <div class="flex items-center space-x-2">
+                        <span id="connection-status" class="h-3 w-3 rounded-full bg-gray-400"></span>
+                        <span id="last-update" class="text-sm">Belum ada data terkirim</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="container mx-auto px-4 py-6 lg:max-w-[70%]">
+            <div class="card bg-white rounded-lg shadow p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Input Data Manual</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label for="temperature-input" class="block text-sm font-medium text-gray-700 mb-1">Suhu (°C)</label>
+                        <input type="number" step="0.01" id="temperature-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label for="pressure-input" class="block text-sm font-medium text-gray-700 mb-1">Tekanan (Psi)</label>
+                        <input type="number" step="0.01" id="pressure-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label for="flowrate-input" class="block text-sm font-medium text-gray-700 mb-1">Aliran Biogas (L/min)</label>
+                        <input type="number" step="0.01" id="flowrate-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="date-input" class="block text-sm font-medium text-gray-700 mb-1">Tanggal</label>
+                        <input type="date" id="date-input" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Slot Waktu</label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <button data-time="06:00" class="time-btn px-3 py-2 bg-gray-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">06:00</button>
+                            <button data-time="12:00" class="time-btn px-3 py-2 bg-gray-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">12:00</button>
+                            <button data-time="18:00" class="time-btn px-3 py-2 bg-gray-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">18:00</button>
+                            <button data-time="00:00" class="time-btn px-3 py-2 bg-gray-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">00:00</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button id="send-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Kirim ke Firebase
+                    </button>
+                    <button id="clear-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Hapus
+                    </button>
+                </div>
+            </div>
+            
+            <div class="card bg-white rounded-lg shadow p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Pratinjau Data</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="p-4 border rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Suhu</p>
+                                <h2 class="text-3xl font-bold" id="temperature-preview">--</h2>
+                            </div>
+                            <div class="p-3 rounded-full bg-red-100 text-red-600">
+                                <i class="fas fa-temperature-high text-2xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 border rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Tekanan</p>
+                                <h2 class="text-3xl font-bold" id="pressure-preview">--</h2>
+                            </div>
+                            <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+                                <i class="fas fa-tachometer-alt text-2xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 border rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Aliran Biogas</p>
+                                <h2 class="text-3xl font-bold" id="flowrate-preview">--</h2>
+                            </div>
+                            <div class="p-3 rounded-full bg-green-100 text-green-600">
+                                <i class="fas fa-tint text-2xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <p class="text-gray-500 text-sm">Waktu</p>
+                    <p class="text-lg" id="timestamp-preview">Belum diatur</p>
+                </div>
+            </div>
+            
+            <div class="card bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Konfigurasi Firebase</h2>
+                
+                <div class="mb-4">
+                    <label for="firebase-config" class="block text-sm font-medium text-gray-700 mb-1">Konfigurasi Firebase JSON</label>
+                    <textarea id="firebase-config" rows="6" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-mono text-sm">{
+  "apiKey": "AIzaSyB1bANU9D5o-MlhUHlpdl4LTBYOxfDOxkQ",
+  "authDomain": "jualinbot.firebaseapp.com",
+  "databaseURL": "https://jualinbot-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "projectId": "jualinbot",
+  "storageBucket": "jualinbot.appspot.com",
+  "messagingSenderId": "608604211837",
+  "appId": "1:608604211837:web:6dcc4de2601013cadfbf14"
+}</textarea>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="firebase-path" class="block text-sm font-medium text-gray-700 mb-1">Path Database</label>
+                    <input type="text" id="firebase-path" value="/sensor_data" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                
+                <div class="flex justify-end">
+                    <button id="save-config-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Simpan & Sambungkan
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let firebaseConfig = {
+            apiKey: "AIzaSyB1bANU9D5o-MlhUHlpdl4LTBYOxfDOxkQ",
+            authDomain: "jualinbot.firebaseapp.com",
+            databaseURL: "https://jualinbot-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "jualinbot",
+            storageBucket: "jualinbot.appspot.com",
+            messagingSenderId: "608604211837",
+            appId: "1:608604211837:web:6dcc4de2601013cadfbf14"
+        };
+        
+        let firebasePath = "/sensor_data";
+        let database;
+        let firebaseInitialized = false;
+        
+        const temperatureInput = document.getElementById('temperature-input');
+        const pressureInput = document.getElementById('pressure-input');
+        const flowrateInput = document.getElementById('flowrate-input');
+        const dateInput = document.getElementById('date-input');
+        const timeButtons = document.querySelectorAll('.time-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const saveConfigBtn = document.getElementById('save-config-btn');
+        const firebaseConfigTextarea = document.getElementById('firebase-config');
+        const firebasePathInput = document.getElementById('firebase-path');
+        
+        const temperaturePreview = document.getElementById('temperature-preview');
+        const pressurePreview = document.getElementById('pressure-preview');
+        const flowratePreview = document.getElementById('flowrate-preview');
+        const timestampPreview = document.getElementById('timestamp-preview');
+        
+        const firebaseStatus = document.getElementById('firebaseStatus');
+        const connectionStatus = document.getElementById('connection-status');
+        const lastUpdate = document.getElementById('last-update');
+        
+        let selectedTime = null;
+        
+        function initDateInput() {
+            const today = new Date();
+            const dateStr = today.toISOString().split('T')[0];
+            dateInput.value = dateStr;
+        }
+        
+        function setupTimeButtons() {
+            timeButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    timeButtons.forEach(b => b.classList.remove('bg-blue-500', 'text-white'));
+                    this.classList.add('bg-blue-500', 'text-white');
+                    selectedTime = this.dataset.time;
+                    updatePreview();
+                });
+            });
+        }
+        
+        function updatePreview() {
+            temperaturePreview.textContent = temperatureInput.value || '--';
+            pressurePreview.textContent = pressureInput.value || '--';
+            flowratePreview.textContent = flowrateInput.value || '--';
+            
+            if (dateInput.value && selectedTime) {
+                const date = new Date(dateInput.value);
+                const [hours, minutes] = selectedTime.split(':').map(Number);
+                
+                date.setHours(hours);
+                date.setMinutes(minutes);
+                date.setSeconds(0);
+                
+                timestampPreview.textContent = date.toLocaleString();
+            } else {
+                timestampPreview.textContent = 'Belum diatur';
+            }
+            
+            if (temperatureInput.value) {
+                temperaturePreview.classList.add('value-update');
+                setTimeout(() => temperaturePreview.classList.remove('value-update'), 500);
+            }
+            
+            if (pressureInput.value) {
+                pressurePreview.classList.add('value-update');
+                setTimeout(() => pressurePreview.classList.remove('value-update'), 500);
+            }
+            
+            if (flowrateInput.value) {
+                flowratePreview.classList.add('value-update');
+                setTimeout(() => flowratePreview.classList.remove('value-update'), 500);
+            }
+        }
+        
+        function clearInputs() {
+            temperatureInput.value = '';
+            pressureInput.value = '';
+            flowrateInput.value = '';
+            
+            timeButtons.forEach(btn => btn.classList.remove('bg-blue-500', 'text-white'));
+            selectedTime = null;
+            
+            updatePreview();
+        }
+        
+        function initializeFirebase() {
+            try {
+                firebaseConfig = JSON.parse(firebaseConfigTextarea.value);
+                firebasePath = firebasePathInput.value;
+                
+                localStorage.setItem('firebaseConfig', JSON.stringify(firebaseConfig));
+                localStorage.setItem('firebasePath', firebasePath);
+                
+                if (firebase.apps.length === 0) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                
+                database = firebase.database();
+                firebaseInitialized = true;
+                
+                firebaseStatus.textContent = "Firebase: Terhubung";
+                firebaseStatus.classList.remove('status-disconnected');
+                firebaseStatus.classList.add('status-connected');
+                
+                connectionStatus.className = 'h-3 w-3 rounded-full bg-green-500 animate-pulse';
+            } catch (error) {
+                firebaseInitialized = false;
+                firebaseStatus.textContent = "Firebase: Gagal terhubung";
+                firebaseStatus.classList.remove('status-connected');
+                firebaseStatus.classList.add('status-disconnected');
+                
+                connectionStatus.className = 'h-3 w-3 rounded-full bg-red-500';
+            }
+        }
+        
+        function loadConfig() {
+            const savedConfig = localStorage.getItem('firebaseConfig');
+            const savedPath = localStorage.getItem('firebasePath');
+            
+            if (savedConfig) {
+                try {
+                    firebaseConfigTextarea.value = savedConfig;
+                    firebaseConfig = JSON.parse(savedConfig);
+                } catch (e) {
+                    console.error("Error parsing saved Firebase config", e);
+                }
+            }
+            
+            if (savedPath) {
+                firebasePathInput.value = savedPath;
+                firebasePath = savedPath;
+            }
+        }
+        
+        async function sendDataToFirebase() {
+            if (!firebaseInitialized) {
+                alert("Firebase belum terinisialisasi. Silakan periksa konfigurasi Anda.");
+                return;
+            }
+            
+            if (!temperatureInput.value || !pressureInput.value || !flowrateInput.value) {
+                alert("Harap isi semua nilai sensor");
+                return;
+            }
+            
+            if (!dateInput.value || !selectedTime) {
+                alert("Harap pilih tanggal dan waktu");
+                return;
+            }
+            
+            const [year, month, day] = dateInput.value.split('-').map(Number);
+            const [hours, minutes] = selectedTime.split(':').map(Number);
+
+            const date = new Date(year, month - 1, day, hours, minutes, 0);
+
+            const timestamp = date.toISOString();
+            
+            const sensorData = {
+                temperature: parseFloat(temperatureInput.value),
+                pressure: parseFloat(pressureInput.value),
+                flow_rate: parseFloat(flowrateInput.value),
+                timestamp: timestamp
+            };
+            
+            const timestampKey = Math.floor(date.getTime() / 1000).toString();
+            
+            firebaseStatus.textContent = "Firebase: Mengirim data...";
+            firebaseStatus.classList.remove('status-connected', 'status-disconnected');
+            firebaseStatus.classList.add('status-sending');
+            
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Mengirim...';
+            
+            try {
+                await database.ref(`${firebasePath}/${timestampKey}`).set(sensorData);
+                
+                firebaseStatus.textContent = "Firebase: Terhubung";
+                firebaseStatus.classList.remove('status-sending');
+                firebaseStatus.classList.add('status-connected');
+                
+                lastUpdate.textContent = `Terakhir dikirim: ${new Date().toLocaleTimeString()}`;
+                
+                connectionStatus.className = 'h-3 w-3 rounded-full bg-green-500';
+                setTimeout(() => {
+                    connectionStatus.className = 'h-3 w-3 rounded-full bg-green-500 animate-pulse';
+                }, 500);
+                
+                clearInputs();
+            } catch (error) {
+                firebaseStatus.textContent = "Firebase: Gagal mengirim data";
+                firebaseStatus.classList.remove('status-sending', 'status-connected');
+                firebaseStatus.classList.add('status-disconnected');
+                
+                connectionStatus.className = 'h-3 w-3 rounded-full bg-red-500';
+                
+                alert("Gagal mengirim data ke Firebase. Silakan periksa koneksi Anda.");
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = 'Kirim ke Firebase';
+            }
+        }
+        
+        function init() {
+            initDateInput();
+            setupTimeButtons();
+            loadConfig();
+            
+            temperatureInput.addEventListener('input', updatePreview);
+            pressureInput.addEventListener('input', updatePreview);
+            flowrateInput.addEventListener('input', updatePreview);
+            dateInput.addEventListener('change', updatePreview);
+            
+            sendBtn.addEventListener('click', sendDataToFirebase);
+            clearBtn.addEventListener('click', clearInputs);
+            saveConfigBtn.addEventListener('click', initializeFirebase);
+            
+            updatePreview();
+            
+            if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+                initializeFirebase();
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

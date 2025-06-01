@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Arduino</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .card {
+            transition: all 0.3s ease;
+            will-change: transform, box-shadow;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+        .relay-on {
+            background-color: #10B981;
+        }
+        .relay-off {
+            background-color: #EF4444;
+        }
+        @keyframes valueUpdate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .value-update {
+            animation: valueUpdate 0.5s ease;
+        }
+        @keyframes cardHighlight {
+            0% { background-color: inherit; }
+            50% { background-color: rgba(16, 185, 129, 0.1); }
+            100% { background-color: inherit; }
+        }
+        .card-highlight {
+            animation: cardHighlight 1s ease;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <header class="bg-[#33456f] text-white shadow-md sticky top-0 z-[1]">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center lg:max-w-[70%]">
+                <h1 class="text-2xl font-bold">Monitoring Biogas</h1>
+                <div class="flex items-center space-x-2">
+                    <span id="connection-status" class="h-3 w-3 rounded-full bg-gray-400"></span>
+                    <span id="last-update" class="text-sm">Tidak ada data</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="container mx-auto px-4 py-6 lg:max-w-[70%]">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                <div id="temperature-card" class="card bg-white rounded-lg shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">Suhu</p>
+                            <h2 class="text-3xl font-bold" id="temperature-value">--</h2>
+                        </div>
+                        <div class="p-3 rounded-full bg-red-100 text-red-600 w-16 h-16 flex justify-center items-center">
+                            <i class="fas fa-temperature-high text-2xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <p class="text-gray-500 text-sm" id="temperature-time">--</p>
+                    </div>
+                </div>
+
+                <div id="pressure-card" class="card bg-white rounded-lg shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">Tekanan</p>
+                            <h2 class="text-3xl font-bold" id="pressure-value">--</h2>
+                        </div>
+                        <div class="p-3 rounded-full bg-blue-100 text-blue-600 w-16 h-16 flex justify-center items-center">
+                            <i class="fas fa-tachometer-alt text-2xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <p class="text-gray-500 text-sm" id="pressure-time">--</p>
+                    </div>
+                </div>
+
+                <div id="flowrate-card" class="card bg-white rounded-lg shadow p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">Aliran Biogas</p>
+                            <h2 class="text-3xl font-bold" id="flow-rate-value">--</h2>
+                        </div>
+                        <div class="p-3 rounded-full bg-green-100 text-green-600 w-16 h-16 flex justify-center items-center">
+                            <i class="fas fa-tint text-2xl"></i>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <p class="text-gray-500 text-sm" id="flow-rate-time">--</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                <div class="card bg-white rounded-lg shadow p-4">
+                    <h3 class="text-lg font-semibold mb-4">Riwayat Suhu</h3>
+                    <div class="h-64">
+                        <canvas id="temperature-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card bg-white rounded-lg shadow p-4">
+                    <h3 class="text-lg font-semibold mb-4">Riwayat Tekanan</h3>
+                    <div class="h-64">
+                        <canvas id="pressure-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card bg-white rounded-lg shadow p-4">
+                    <h3 class="text-lg font-semibold mb-4">Riwayat Aliran Biogas</h3>
+                    <div class="h-64">
+                        <canvas id="flowrate-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card bg-white rounded-lg shadow overflow-hidden">
+                <div class="p-4 border-b flex justify-between">
+                    <h3 class="text-lg font-semibold">Data Terkini</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tekanan</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aliran Biogas</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200" id="data-table-body">
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">Memuat data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-4 border-t flex justify-end">
+                    <div id="pagination-controls"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    
+    <script>
+        const firebaseConfig = {
+          apiKey: "AIzaSyB1bANU9D5o-MlhUHlpdl4LTBYOxfDOxkQ",
+          authDomain: "jualinbot.firebaseapp.com",
+          databaseURL: "https://jualinbot-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "jualinbot",
+          storageBucket: "jualinbot.appspot.com",
+          messagingSenderId: "608604211837",
+          appId: "1:608604211837:web:6dcc4de2601013cadfbf14"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let temperatureChart, pressureChart, flowrateChart;
+        const maxDataPoints = 14;
+        
+        const multiTimeData = {
+            days: [],
+            temperature: {
+                '06:00': [],
+                '12:00': [],
+                '18:00': [],
+                '00:00': []
+            },
+            pressure: {
+                '06:00': [],
+                '12:00': [],
+                '18:00': [],
+                '00:00': []
+            },
+            flowrate: {
+                '06:00': [],
+                '12:00': [],
+                '18:00': [],
+                '00:00': []
+            }
+        };
+
+        const timeSlots = ['06:00', '12:00', '18:00', '00:00'];
+        const timeColors = {
+            '06:00': 'rgb(59, 130, 246)',
+            '12:00': 'rgb(245, 158, 11)',  
+            '18:00': 'rgb(107, 114, 128)',
+            '00:00': 'red'
+        };
+
+        function getTimeFromTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+        function getDayFromTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toDateString();
+        }
+
+        function organizeDataByTimeSlots(allData) {
+            const organized = {};
+            const dayMap = {};
+            let dayCounter = 1;
+
+            const sortedData = Object.entries(allData)
+                .map(([key, value]) => ({ ...value, key }))
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            sortedData.forEach(item => {
+                const day = getDayFromTimestamp(item.timestamp);
+                const time = getTimeFromTimestamp(item.timestamp);
+                
+                if (!dayMap[day]) {
+                    dayMap[day] = `${dayCounter}`;
+                    dayCounter++;
+                }
+
+                if (!organized[day]) {
+                    organized[day] = {};
+                }
+
+                let closestTime = timeSlots[0];
+                let minDiff = Math.abs(parseTime(time) - parseTime(timeSlots[0]));
+                
+                timeSlots.forEach(slot => {
+                    const diff = Math.abs(parseTime(time) - parseTime(slot));
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestTime = slot;
+                    }
+                });
+
+                organized[day][closestTime] = item;
+            });
+
+            return { organized, dayMap };
+        }
+
+        function parseTime(timeStr) {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return hours * 60 + minutes;
+        }
+
+        function updateMultiTimeData(allData) {
+            const { organized, dayMap } = organizeDataByTimeSlots(allData);
+            
+            multiTimeData.days = [];
+            timeSlots.forEach(time => {
+                multiTimeData.temperature[time] = [];
+                multiTimeData.pressure[time] = [];
+                multiTimeData.flowrate[time] = [];
+            });
+
+            const sortedDays = Object.keys(organized)
+                .sort((a, b) => new Date(a) - new Date(b))
+                .slice(-maxDataPoints);
+
+            sortedDays.forEach(day => {
+                multiTimeData.days.push(dayMap[day]);
+                
+                timeSlots.forEach(time => {
+                    const dayData = organized[day][time];
+                    if (dayData) {
+                        multiTimeData.temperature[time].push(dayData.temperature || null);
+                        multiTimeData.pressure[time].push(dayData.pressure || null);
+                        multiTimeData.flowrate[time].push(dayData.flow_rate || null);
+                    } else {
+                        multiTimeData.temperature[time].push(null);
+                        multiTimeData.pressure[time].push(null);
+                        multiTimeData.flowrate[time].push(null);
+                    }
+                });
+            });
+        }
+
+        function initCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {
+                    duration: 300,
+                    easing: 'easeInOutQuart'
+                },
+                elements: {
+                    line: {
+                        tension: 0.4,
+                        borderWidth: 2
+                    },
+                    point: {
+                        radius: 4,
+                        hoverRadius: 6
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Waktu (Hari)',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            }
+                        },
+                        grid: {
+                            display: true,
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Nilai',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'right',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 15,
+                            font: {
+                                size: 9
+                            }
+                        }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: 'white',
+                        bodyColor: 'white',
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        borderWidth: 1
+                    }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                }
+            };
+
+            const tempCtx = document.getElementById('temperature-chart').getContext('2d');
+            temperatureChart = new Chart(tempCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: timeSlots.map(time => ({
+                        label: `${time} WIB`,
+                        data: [],
+                        borderColor: timeColors[time],
+                        backgroundColor: timeColors[time].replace('rgb', 'rgba').replace(')', ', 0.1)'),
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: false,
+                        pointBackgroundColor: timeColors[time],
+                        pointBorderColor: 'transparent',
+                        pointBorderWidth: 2,
+                        pointRadius: 0,
+                    }))
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            title: {
+                                ...chartOptions.scales.y.title,
+                                text: 'Suhu (°C)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            const pressureCtx = document.getElementById('pressure-chart').getContext('2d');
+            pressureChart = new Chart(pressureCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: timeSlots.map(time => ({
+                        label: `${time} WIB`,
+                        data: [],
+                        borderColor: timeColors[time],
+                        backgroundColor: timeColors[time].replace('rgb', 'rgba').replace(')', ', 0.1)'),
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: false,
+                        pointBackgroundColor: timeColors[time],
+                        pointBorderColor: 'transparent',
+                        pointBorderWidth: 2,
+                        pointRadius: 0,
+                    }))
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            title: {
+                                ...chartOptions.scales.y.title,
+                                text: 'Tekanan (Psi)'
+                            }
+                        }
+                    }
+                }
+            });
+
+            const flowrateCtx = document.getElementById('flowrate-chart').getContext('2d');
+            flowrateChart = new Chart(flowrateCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: timeSlots.map(time => ({
+                        label: `${time} WIB`,
+                        data: [],
+                        borderColor: timeColors[time],
+                        backgroundColor: timeColors[time].replace('rgb', 'rgba').replace(')', ', 0.1)'),
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: false,
+                        pointBackgroundColor: timeColors[time],
+                        pointBorderColor: 'transparent',
+                        pointBorderWidth: 2,
+                        pointRadius: 0,
+                    }))
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            title: {
+                                ...chartOptions.scales.y.title,
+                                text: 'Aliran Biogas (L/min)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateAllCharts() {
+            if (!temperatureChart || !pressureChart || !flowrateChart) return;
+
+            requestAnimationFrame(() => {
+                try {
+                    temperatureChart.data.labels = multiTimeData.days;
+                    temperatureChart.data.datasets.forEach((dataset, index) => {
+                        const time = timeSlots[index];
+                        dataset.data = multiTimeData.temperature[time];
+                    });
+                    temperatureChart.update('none');
+
+                    pressureChart.data.labels = multiTimeData.days;
+                    pressureChart.data.datasets.forEach((dataset, index) => {
+                        const time = timeSlots[index];
+                        dataset.data = multiTimeData.pressure[time];
+                    });
+                    pressureChart.update('none');
+
+                    flowrateChart.data.labels = multiTimeData.days;
+                    flowrateChart.data.datasets.forEach((dataset, index) => {
+                        const time = timeSlots[index];
+                        dataset.data = multiTimeData.flowrate[time];
+                    });
+                    flowrateChart.update('none');
+
+                } catch (error) {
+                    console.error('Error update chart:', error);
+                }
+            });
+        }
+
+        function debounce(func, wait, immediate) {
+            let timeout;
+            return function() {
+                const context = this, args = arguments;
+                const later = function() {
+                    timeout = null;
+                    if (!immediate) func.apply(context, args);
+                };
+                const callNow = immediate && !timeout;
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+                if (callNow) func.apply(context, args);
+            };
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        }
+
+        let currentPage = 1;
+        const rowsPerPage = 5;
+
+        function updateDataTable(data, page = 1) {
+            const tableBody = document.getElementById('data-table-body');
+            const fragment = document.createDocumentFragment();
+            
+            const dataArray = Object.entries(data).map(([key, value]) => ({
+                id: key,
+                ...value
+            })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            const totalPages = Math.ceil(dataArray.length / rowsPerPage);
+            const paginatedData = dataArray.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+            if (paginatedData.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">Tidak ada data</td>
+                `;
+                fragment.appendChild(row);
+            } else {
+                paginatedData.forEach((item, i) => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${i + 1 + (page - 1) * rowsPerPage}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatTimestamp(item.timestamp)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.temperature?.toFixed(2) || '--'} °C</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.pressure?.toFixed(2) || '--'} Psi</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.flow_rate?.toFixed(2) || '--'} L/min</td>
+                    `;
+                    fragment.appendChild(row);
+                });
+            }
+
+            tableBody.innerHTML = '';
+            tableBody.appendChild(fragment);
+            
+            // Update pagination controls
+            updatePaginationControls(data, totalPages, page);
+        }
+
+        function updatePaginationControls(data, totalPages, currentPage) {
+            const paginationDiv = document.getElementById('pagination-controls');
+            paginationDiv.innerHTML = '';
+            
+            if (totalPages > 1) {
+                const prevButton = document.createElement('button');
+                prevButton.innerHTML = '<i class="fas fa-chevron-left"></i>';
+                prevButton.className = 'ml-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+                prevButton.disabled = currentPage === 1;
+                prevButton.addEventListener('click', () => updateDataTable(data, currentPage - 1));
+                
+                const pageInfo = document.createElement('span');
+                pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+                pageInfo.style.fontSize = '12px';
+                
+                const nextButton = document.createElement('button');
+                nextButton.innerHTML = '<i class="fas fa-chevron-right"></i>';
+                nextButton.className = 'ml-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+                nextButton.disabled = currentPage === totalPages;
+                nextButton.addEventListener('click', () => updateDataTable(data, currentPage + 1));
+                
+                paginationDiv.appendChild(pageInfo);
+                paginationDiv.appendChild(prevButton);
+                paginationDiv.appendChild(nextButton);
+            }
+        }
+
+        function animateValue(element) {
+            element.classList.add('value-update');
+            setTimeout(() => {
+                element.classList.remove('value-update');
+            }, 500);
+        }
+
+        function highlightCard(cardId) {
+            const card = document.getElementById(cardId);
+            card.classList.add('card-highlight');
+            setTimeout(() => {
+                card.classList.remove('card-highlight');
+            }, 1000);
+        }
+
+        const updateLatestValues = debounce(function(latestData) {
+            const tempValue = document.getElementById('temperature-value');
+            const pressureValue = document.getElementById('pressure-value');
+            const flowRateValue = document.getElementById('flow-rate-value');
+            
+            const newTempText = `${latestData.temperature?.toFixed(2) || '--'} °C`;
+            const newPressureText = `${latestData.pressure?.toFixed(2) || '--'} Psi`;
+            const newFlowText = `${latestData.flow_rate?.toFixed(2) || '--'} L/min`;
+            
+            if (tempValue.textContent !== newTempText) {
+                tempValue.textContent = newTempText;
+                animateValue(tempValue);
+                highlightCard('temperature-card');
+            }
+            
+            if (pressureValue.textContent !== newPressureText) {
+                pressureValue.textContent = newPressureText;
+                animateValue(pressureValue);
+                highlightCard('pressure-card');
+            }
+            
+            if (flowRateValue.textContent !== newFlowText) {
+                flowRateValue.textContent = newFlowText;
+                animateValue(flowRateValue);
+                highlightCard('flowrate-card');
+            }
+
+            const formattedTime = formatTimestamp(latestData.timestamp);
+            document.getElementById('temperature-time').textContent = formattedTime;
+            document.getElementById('pressure-time').textContent = formattedTime;
+            document.getElementById('flow-rate-time').textContent = formattedTime;
+
+            document.getElementById('last-update').textContent = `Update terakhir: ${new Date().toLocaleTimeString()}`;
+            document.getElementById('connection-status').className = 'h-3 w-3 rounded-full bg-green-500 animate-pulse';
+        }, 100);
+
+        function startListening() {
+            const dataRef = database.ref('/sensor_data');
+
+            dataRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateDataTable(data);
+                    updateMultiTimeData(data);
+                    updateAllCharts();
+                    
+                    const dataKeys = Object.keys(data);
+                    const latestKey = dataKeys[dataKeys.length - 1];
+                    const latestData = data[latestKey];
+                    updateLatestValues(latestData);
+                }
+            }, (error) => {
+                console.error('Error membaca data:', error);
+                document.getElementById('connection-status').className = 'h-3 w-3 rounded-full bg-red-500';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            startListening();
+        });
+    </script>
+</body>
+</html>
