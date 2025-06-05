@@ -46,6 +46,13 @@
         canvas {
             display: block;
         }
+        .delete-btn {
+            transition: all 0.2s ease;
+        }
+        .delete-btn:hover {
+            transform: scale(1.1);
+            color: #EF4444;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -144,11 +151,12 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tekanan</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aliran Biogas</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200" id="data-table-body">
                             <tr>
-                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">Memuat data...</td>
+                                <td colspan="6" class="px-6 py-4 text-center text-gray-500">Memuat data...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -158,6 +166,22 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 class="text-lg font-semibold mb-4">Konfirmasi Hapus Data</h3>
+            <p class="mb-6">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-delete" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Batal
+                </button>
+                <button id="confirm-delete" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                    Hapus
+                </button>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
@@ -208,6 +232,12 @@
             '18:00': 'rgb(107, 114, 128)',
             '00:00': 'red'
         };
+
+        // Variables for delete functionality
+        let dataToDelete = null;
+        const deleteModal = document.getElementById('delete-modal');
+        const cancelDeleteBtn = document.getElementById('cancel-delete');
+        const confirmDeleteBtn = document.getElementById('confirm-delete');
 
         function getTimeFromTimestamp(timestamp) {
             const date = new Date(timestamp);
@@ -271,7 +301,6 @@
         }
 
         function updateMultiTimeData(allData) {
-
             console.log(allData);
             const { organized, dayMap } = organizeDataByTimeSlots(allData);
 
@@ -572,7 +601,7 @@
             if (paginatedData.length === 0) {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">Tidak ada data</td>
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">Tidak ada data</td>
                 `;
                 fragment.appendChild(row);
             } else {
@@ -581,10 +610,15 @@
                     row.className = 'hover:bg-gray-50';
                     row.innerHTML = `
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${i + 1 + (page - 1) * rowsPerPage}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parseISOToIndoFormat(new Date(Number(dataKeys[i] + '000')).toISOString())}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parseISOToIndoFormat(new Date(Number(item.id + '000')).toISOString())}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.temperature?.toFixed(2) || '--'} °C</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.pressure?.toFixed(2) || '--'} Psi</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.flow_rate?.toFixed(2) || '--'} L/min</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button class="delete-btn text-red-500 hover:text-red-700 focus:outline-none" data-id="${item.id}">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
                     `;
                     fragment.appendChild(row);
                 });
@@ -593,8 +627,40 @@
             tableBody.innerHTML = '';
             tableBody.appendChild(fragment);
             
-            // Update pagination controls
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const dataId = btn.getAttribute('data-id');
+                    showDeleteConfirmation(dataId);
+                });
+            });
+            
             updatePaginationControls(data, totalPages, page);
+        }
+
+        function showDeleteConfirmation(dataId) {
+            dataToDelete = dataId;
+            deleteModal.classList.remove('hidden');
+        }
+
+        function hideDeleteConfirmation() {
+            dataToDelete = null;
+            deleteModal.classList.add('hidden');
+        }
+
+        function deleteData() {
+            if (!dataToDelete) return;
+            
+            database.ref('/sensor_data/' + dataToDelete).remove()
+                .then(() => {
+                    hideDeleteConfirmation();
+                    alert('Data berhasil dihapus');
+                    location.reload();
+                })
+                .catch((error) => {
+                    console.error('Error deleting data:', error);
+                    alert('Gagal menghapus data');
+                });
         }
 
         function updatePaginationControls(data, totalPages, currentPage) {
@@ -700,6 +766,15 @@
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
             startListening();
+            
+            cancelDeleteBtn.addEventListener('click', hideDeleteConfirmation);
+            confirmDeleteBtn.addEventListener('click', deleteData);
+            
+            deleteModal.addEventListener('click', (e) => {
+                if (e.target === deleteModal) {
+                    hideDeleteConfirmation();
+                }
+            });
         });
     </script>
 </body>
