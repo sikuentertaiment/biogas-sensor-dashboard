@@ -355,7 +355,9 @@
             const [year, month, day] = dateInput.value.split('-').map(Number);
             const [hours, minutes] = selectedTime.split(':').map(Number);
 
-            const date = new Date(year, month - 1, day, hours, minutes, 0);
+            const date = new Date(year, month - 1, day + 1, hours - 17, minutes, 0);
+
+            console.log('date time date:',date.getTime());
 
             const timestamp = date.toISOString();
             
